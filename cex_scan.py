@@ -38,8 +38,13 @@ def scan(region):
     api = f"https://wss2.cex.{region}.webuy.io/v3"
     ids = lambda xs: "[" + ",".join(map(str, xs)) + "]"
     lines = [p["productLineId"] for p in get(api, f"/productlines?superCatIds={ids(SUPERCATS)}")["productLines"]]
-    time.sleep(DELAY)
-    cats = get(api, f"/categories?productLineIds={ids(lines)}")["categories"]
+    cats, seen = [], set()
+    for lid in lines:  # API принимает только одну линейку за запрос
+        time.sleep(DELAY)
+        for c in (get(api, f"/categories?productLineIds=[{lid}]") or {}).get("categories", []):
+            if c["categoryId"] not in seen:
+                seen.add(c["categoryId"])
+                cats.append(c)
     print(f"[{region}] категорий: {len(cats)}", file=sys.stderr)
     out = []
     for ci, c in enumerate(cats, 1):

@@ -21,10 +21,14 @@
     throw new Error('Запрос не удался: ' + path);
   };
 
-  // API теперь требует productLineIds: сначала линейки, потом их категории
+  // API требует productLineIds и принимает только ОДНУ линейку за запрос
   const lines = (await get(`/productlines?superCatIds=[${SUPERCATS}]`)).productLines.map(p => p.productLineId);
-  await sleep(DELAY_MS);
-  const cats = (await get(`/categories?productLineIds=[${lines}]`)).categories;
+  const cats = [], seen = new Set();
+  for (const id of lines) {
+    await sleep(DELAY_MS);
+    const d = await get(`/categories?productLineIds=[${id}]`);
+    for (const c of (d && d.categories) || []) if (!seen.has(c.categoryId)) { seen.add(c.categoryId); cats.push(c); }
+  }
   console.log(`[${region}] категорий: ${cats.length}`);
   const out = [];
   for (const [ci, c] of cats.entries()) {
