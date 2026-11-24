@@ -25,7 +25,7 @@ a{color:var(--acc)}#files{font-size:12px}
 </head>
 <body>
 <h1>CeX: что купить в Европе и сдать в Ирландии за кэш</h1>
-<div class="mut">Загрузи JSON из cex-scan.js: обязательно Ирландию (ie) и хотя бы один источник (uk / es / pt). Товары сопоставляются по boxId — это тот же артикул и тот же грейд.</div>
+<div class="mut">Загрузи JSON: обязательно Ирландию (ie из cex-scan.js) и хотя бы один источник: uk / es / pt из cex-scan.js или ebay из ebay_prices.py. Товары сопоставляются по boxId — это тот же артикул и тот же грейд.</div>
 
 <div class="panel">
   <label>Файлы JSON<input type="file" id="f" multiple accept=".json"></label>
@@ -85,10 +85,10 @@ function rows() {
       const s = data[reg].get(id);
       if (!s || !s.sell || ($('stock').checked && s.outOfStock)) continue;
       const p = eur(s.sell, reg);
-      if (!best || p < best.price) best = { reg, price: p };
+      if (!best || p < best.price) best = { reg, price: p, url: s.url, title: s.ebayTitle, n: s.ebayCount };
     }
     if (!best) continue;
-    r.src = best.reg; r.srcPrice = best.price;
+    r.src = best.reg; r.srcPrice = best.price; r.srcUrl = best.url; r.srcTitle = best.title; r.srcN = best.n;
     r.profit = it.cash - best.price; r.margin = r.profit / best.price * 100;
     if (r.profit < +$('minP').value || r.margin < +$('minM').value) continue;
     out.push(r);
@@ -108,7 +108,7 @@ function render() {
   const rs = rows().sort((a,b) => { const x=a[sortKey], y=b[sortKey]; return (typeof x === 'string' ? x.localeCompare(y) : (x??-1e9)-(y??-1e9)) * sortDir; });
   $('sum').textContent = !data.ie ? 'Нет файла Ирландии (ie).' : `Найдено: ${rs.length}` + (arb && rs.length ? ` · суммарная прибыль, если взять по 1 шт.: €${rs.reduce((s,r)=>s+r.profit,0).toFixed(0)}` : '');
   $('b').innerHTML = rs.slice(0, 500).map(r => arb
-    ? `<tr><td class="l">${link('ie', r.id, esc(r.name))}</td><td class="l">${esc(r.cat||'')}</td><td>${link(r.src, r.id, r.src.toUpperCase())}${r.src==='uk'?' <span class="warn" title="Не ЕС: таможня">⚠</span>':''}</td><td>${fmt(r.srcPrice)}</td><td>${fmt(r.cash)}</td><td class="good">${fmt(r.profit)}</td><td>${r.margin.toFixed(0)}%</td><td>${r.ratio?.toFixed(2)??'—'}</td></tr>`
+    ? `<tr><td class="l">${link('ie', r.id, esc(r.name))}</td><td class="l">${esc(r.cat||'')}</td><td>${r.srcUrl ? `<a href="${esc(r.srcUrl)}" target="_blank" rel="noopener" title="${esc(r.srcTitle||'')} (лотов: ${r.srcN})">eBay</a>` : link(r.src, r.id, r.src.toUpperCase())}${r.src==='uk'?' <span class="warn" title="Не ЕС: таможня">⚠</span>':''}</td><td>${fmt(r.srcPrice)}</td><td>${fmt(r.cash)}</td><td class="good">${fmt(r.profit)}</td><td>${r.margin.toFixed(0)}%</td><td>${r.ratio?.toFixed(2)??'—'}</td></tr>`
     : `<tr><td class="l">${link('ie', r.id, esc(r.name))}</td><td class="l">${esc(r.cat||'')}</td><td>${fmt(r.ieSell)}</td><td>${fmt(r.cash)}</td><td class="good">${r.ratio.toFixed(2)}</td></tr>`).join('');
 }
 const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
