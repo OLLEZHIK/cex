@@ -21,7 +21,10 @@
     throw new Error('Запрос не удался: ' + path);
   };
 
-  const cats = (await get(`/categories?superCatIds=[${SUPERCATS}]`)).categories;
+  // API теперь требует productLineIds: сначала линейки, потом их категории
+  const lines = (await get(`/productlines?superCatIds=[${SUPERCATS}]`)).productLines.map(p => p.productLineId);
+  await sleep(DELAY_MS);
+  const cats = (await get(`/categories?productLineIds=[${lines}]`)).categories;
   console.log(`[${region}] категорий: ${cats.length}`);
   const out = [];
   for (const [ci, c] of cats.entries()) {
