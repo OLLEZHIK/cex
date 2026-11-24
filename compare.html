@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CeX: арбитраж в Ирландию</title>
+<style>
+:root{--bg:#fafaf9;--fg:#1c1917;--mut:#78716c;--line:#e7e5e4;--card:#fff;--good:#15803d;--warn:#b45309;--acc:#2563eb}
+@media (prefers-color-scheme:dark){:root{--bg:#1c1917;--fg:#f5f5f4;--mut:#a8a29e;--line:#44403c;--card:#292524;--good:#4ade80;--warn:#fbbf24;--acc:#60a5fa}}
+*{box-sizing:border-box}
+body{margin:0;padding:16px;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,sans-serif}
+h1{font-size:20px;margin:0 0 4px}.mut{color:var(--mut)}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin:12px 0;display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--mut)}
+input,select{font:inherit;padding:5px 7px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);width:110px}
+input[type=file]{width:auto}input[type=checkbox]{width:auto}
+.wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+table{border-collapse:collapse;width:100%;min-width:900px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{position:sticky;top:0;background:var(--card);cursor:pointer;font-size:12px;color:var(--mut)}
+td.l,th.l{text-align:left;white-space:normal}
+.good{color:var(--good);font-weight:600}.warn{color:var(--warn)}
+a{color:var(--acc)}#files{font-size:12px}
+</style>
+</head>
+<body>
+<h1>CeX: что купить в Европе и сдать в Ирландии за кэш</h1>
+<div class="mut">Загрузи JSON из cex-scan.js: обязательно Ирландию (ie) и хотя бы один источник (uk / es / pt). Товары сопоставляются по boxId — это тот же артикул и тот же грейд.</div>
+
+<div class="panel">
+  <label>Файлы JSON<input type="file" id="f" multiple accept=".json"></label>
+  <label>Курс GBP→EUR<input type="number" id="gbp" value="1.17" step="0.01"></label>
+  <label>Мин. прибыль, €<input type="number" id="minP" value="20"></label>
+  <label>Мин. маржа, %<input type="number" id="minM" value="10"></label>
+  <label>Режим<select id="mode" style="width:200px">
+    <option value="arb">Арбитраж: кэш IE − цена в источнике</option>
+    <option value="ratio">Аномалии IE: кэш / цена продажи</option></select></label>
+  <label>Мин. кэш/продажа IE<input type="number" id="minR" value="0.6" step="0.05"></label>
+  <label><span><input type="checkbox" id="stock" checked> только в наличии в источнике</span></label>
+  <label>Поиск<input id="q" style="width:160px" placeholder="iphone, ps4…"></label>
+</div>
+<div id="files" class="mut"></div>
+<div id="sum" class="mut" style="margin:8px 0"></div>
+<div class="wrap"><table><thead><tr id="h"></tr></thead><tbody id="b"></tbody></table></div>
+<p class="mut">⚠ Великобритания не в ЕС: ввоз в Ирландию сверх €430 на человека (авиа) или товара для перепродажи облагается НДС 23% (+ пошлина), это нужно декларировать. Испания и Португалия — внутри ЕС, таможни нет. Цены выкупа в CeX меняются ежедневно и зависят от склада магазина — сверяй цену в день поездки.</p>
+
+<script>
+const data = {};   // region -> Map(boxId -> item)
+const meta = {};
+const $ = id => document.getElementById(id);
+let sortKey = 'profit', sortDir = -1;
+
+$('f').onchange = async e => {
+  for (const file of e.target.files) {
+    try {
+      const j = JSON.parse(await file.text());
+      data[j.region] = new Map(j.items.map(i => [i.boxId, i]));
+      meta[j.region] = `${j.region.toUpperCase()}: ${j.items.length} товаров (${j.scannedAt.slice(0,16).replace('T',' ')})`;
+    } catch (err) { alert(file.name + ': не тот формат'); }
+  }
+  $('files').textContent = Object.values(meta).join(' · ');
+  render();
+};
+document.querySelectorAll('input,select').forEach(el => el.id !== 'f' && (el.oninput = render));
+
+const eur = (v, region) => v == null ? null : region === 'uk' ? v * +$('gbp').value : v;
+const fmt = v => v == null ? '—' : '€' + v.toFixed(0);
+const link = (r, id, t) => `<a href="https://${r}.webuy.com/product-detail?id=${encodeURIComponent(id)}" target="_blank" rel="noopener">${t}</a>`;
+
+function rows() {
+  const ie = data.ie; if (!ie) return [];
+  const q = $('q').value.trim().toLowerCase();
+  const out = [];
+  for (const [id, it] of ie) {
+    if (!it.cash) continue;
+    if (q && !it.name.toLowerCase().includes(q)) continue;
+    const r = { id, name: it.name, cat: it.category, cash: it.cash, ieSell: it.sell, ratio: it.sell ? it.cash / it.sell : null };
+    if ($('mode').value === 'ratio') {
+      if (r.ratio < +$('minR').value) continue;
+      out.push(r); continue;
+    }
+    let best = null;
+    for (const reg of Object.keys(data)) {
+      if (reg === 'ie') continue;
+      const s = data[reg].get(id);
+      if (!s || !s.sell || ($('stock').checked && s.outOfStock)) continue;
+      const p = eur(s.sell, reg);
+      if (!best || p < best.price) best = { reg, price: p };
+    }
+    if (!best) continue;
+    r.src = best.reg; r.srcPrice = best.price;
+    r.profit = it.cash - best.price; r.margin = r.profit / best.price * 100;
+    if (r.profit < +$('minP').value || r.margin < +$('minM').value) continue;
+    out.push(r);
+  }
+  return out;
+}
+
+function render() {
+  const arb = $('mode').value === 'arb';
+  if (!arb && sortKey === 'profit') sortKey = 'ratio';
+  if (arb && sortKey === 'ratio') sortKey = 'profit';
+  const cols = arb
+    ? [['name','Товар','l'],['cat','Категория','l'],['src','Где купить'],['srcPrice','Цена там'],['cash','Кэш в IE'],['profit','Прибыль'],['margin','Маржа'],['ratio','Кэш/продажа IE']]
+    : [['name','Товар','l'],['cat','Категория','l'],['ieSell','Продажа IE'],['cash','Кэш в IE'],['ratio','Кэш/продажа']];
+  $('h').innerHTML = cols.map(([k,t,c]) => `<th class="${c||''}" data-k="${k}">${t}${k===sortKey?(sortDir<0?' ▼':' ▲'):''}</th>`).join('');
+  $('h').querySelectorAll('th').forEach(th => th.onclick = () => { const k = th.dataset.k; sortDir = k === sortKey ? -sortDir : -1; sortKey = k; render(); });
+  const rs = rows().sort((a,b) => { const x=a[sortKey], y=b[sortKey]; return (typeof x === 'string' ? x.localeCompare(y) : (x??-1e9)-(y??-1e9)) * sortDir; });
+  $('sum').textContent = !data.ie ? 'Нет файла Ирландии (ie).' : `Найдено: ${rs.length}` + (arb && rs.length ? ` · суммарная прибыль, если взять по 1 шт.: €${rs.reduce((s,r)=>s+r.profit,0).toFixed(0)}` : '');
+  $('b').innerHTML = rs.slice(0, 500).map(r => arb
+    ? `<tr><td class="l">${link('ie', r.id, esc(r.name))}</td><td class="l">${esc(r.cat||'')}</td><td>${link(r.src, r.id, r.src.toUpperCase())}${r.src==='uk'?' <span class="warn" title="Не ЕС: таможня">⚠</span>':''}</td><td>${fmt(r.srcPrice)}</td><td>${fmt(r.cash)}</td><td class="good">${fmt(r.profit)}</td><td>${r.margin.toFixed(0)}%</td><td>${r.ratio?.toFixed(2)??'—'}</td></tr>`
+    : `<tr><td class="l">${link('ie', r.id, esc(r.name))}</td><td class="l">${esc(r.cat||'')}</td><td>${fmt(r.ieSell)}</td><td>${fmt(r.cash)}</td><td class="good">${r.ratio.toFixed(2)}</td></tr>`).join('');
+}
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+render();
+</script>
+</body>
+</html>
