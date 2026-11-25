@@ -1,0 +1,4 @@
+data/
+*.csv
+cex-*.json
+__pycache__/

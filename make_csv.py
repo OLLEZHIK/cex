@@ -18,6 +18,13 @@ def ecb_gbp_eur():
     return 1 / float(re.search(r"currency='GBP' rate='([\d.]+)'", xml).group(1)), day
 
 
+def in_stock(i):
+    # поиск сайта отдаёт outOfStock строкой — надёжнее количество на складе
+    if isinstance(i.get("stock"), (int, float)):
+        return i["stock"] > 0
+    return not i.get("outOfStock")
+
+
 def flags(src, ie, profit, cost):
     f = []
     if ie["name"] != src["name"]:
@@ -26,6 +33,8 @@ def flags(src, ie, profit, cost):
         f.append("прибыль > 100% цены")
     if ie["sell"] and ie["cash"] >= ie["sell"] * 0.9:
         f.append("кэш IE почти = продажа IE")
+    if ie.get("boxBuyAllowed") == 0:
+        f.append("CeX IE сейчас не выкупает")
     return "; ".join(f)
 
 
@@ -54,7 +63,7 @@ def main():
             continue
         for bid, s in items.items():
             t = ie.get(bid)
-            if not t or not t.get("cash") or not s.get("sell") or s.get("outOfStock"):
+            if not t or not t.get("cash") or not s.get("sell") or not in_stock(s):
                 continue
             cost = s["sell"] * rate if region == "uk" else s["sell"]
             profit = t["cash"] - cost
@@ -75,9 +84,24 @@ def main():
         if t.get("sell") and t.get("cash") and t["cash"] / t["sell"] >= a.ratio:
             an.append({"ratio": round(t["cash"] / t["sell"], 3), "boxId": bid, "name": t["name"], "category": t["category"],
                        "sell_ie_eur": t["sell"], "cash_ie_eur": t["cash"], "voucher_ie_eur": t.get("voucher"),
-                       "outOfStock": t.get("outOfStock"), "stock": t.get("stock")})
+                       "stock_ie": t.get("stock"), "buy_allowed": t.get("boxBuyAllowed"),
+                       "suspicious": anomaly_flags(t)})
     an.sort(key=lambda r: (-r["ratio"], -r["cash_ie_eur"]))
     write("anomalies-ie.csv", an)
+
+
+def anomaly_flags(t):
+    f = []
+    r = t["cash"] / t["sell"]
+    if r >= 1:
+        f.append("кэш >= цены продажи")
+    elif r >= 0.85:
+        f.append("кэш почти = продажа")
+    if t.get("boxBuyAllowed") == 0:
+        f.append("CeX не выкупает")
+    if t["sell"] < 25:
+        f.append("дешёвый товар")
+    return "; ".join(f)
 
 
 def write(fn, rows):

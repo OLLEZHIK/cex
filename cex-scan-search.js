@@ -57,7 +57,7 @@
       category: pick(h, 'categoryFriendlyName', 'categoryName'), superCat: pick(h, 'superCatFriendlyName', 'superCatName'),
       sell: pick(h, 'sellPrice'), cash: pick(h, 'cashPriceCalculated', 'cashBuyPrice'),
       voucher: pick(h, 'exchangePriceCalculated', 'exchangePrice'),
-      stock, outOfStock: !!pick(h, 'outOfStock'),
+      stock, outOfStock: stock != null ? !(+stock > 0) : ['1', 1, true].includes(pick(h, 'outOfStock')),
       cashBuyPrice: pick(h, 'cashBuyPrice'), cashPriceCalculated: pick(h, 'cashPriceCalculated'),
       exchangePrice: pick(h, 'exchangePrice'), inStockOnline: pick(h, 'inStockOnline'),
       boxBuyAllowed: pick(h, 'boxBuyAllowed'),
